@@ -1,0 +1,7 @@
+langchain
+langchain-community
+langchain-openai
+langgraph
+markdownify
+readability-lxml
+pyhtml2md

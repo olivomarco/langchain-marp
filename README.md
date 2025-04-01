@@ -8,4 +8,3 @@ To create a PPTX/PDF presentation out of the output provided, you can use [this 
 npx @marp-team/marp-cli@latest outputs/slide-deck.md -o outputs/output.pdf
 npx @marp-team/marp-cli@latest outputs/slide-deck.md -o outputs/output.pptx
 ```
-# langchain-marp
