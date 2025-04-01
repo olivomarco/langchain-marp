@@ -31,8 +31,10 @@ import argparse
 load_dotenv()
 
 # Parse command-line arguments
-parser = argparse.ArgumentParser(description="Langchain Agent for MARP presentations.")
-parser.add_argument("-q", "--query", type=str, required=True, help="The query to search and generate a MARP presentation for.")
+parser = argparse.ArgumentParser(
+    description="Langchain Agent for MARP presentations.")
+parser.add_argument("-q", "--query", type=str, required=True,
+                    help="The query to search and generate a MARP presentation for.")
 args = parser.parse_args()
 
 # Use the query from the command-line arguments
@@ -135,8 +137,6 @@ tools = [
 ]
 agent_executor = create_react_agent(model, tools, checkpointer=memory)
 
-
-# Get the prompt to use - you can modify this!
 prompt = PromptTemplate(input_variables=["agent_scratchpad", "input"], template="""
 Create a MARP presentation using CommonMark based on research. Research all documents that you need to fully understand a topic.
 Only output valid Markdown MARP text, do not add anything else.
