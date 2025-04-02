@@ -1,7 +1,9 @@
 langchain
+langchain_core
 langchain-community
 langchain-openai
 langgraph
 markdownify
 readability-lxml
 pyhtml2md
+lxml_html_clean

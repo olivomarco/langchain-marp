@@ -4,6 +4,7 @@ This script implements a Langchain agent that:
 1. Searches the web using Brave Search API
 2. Downloads web content from search results
 3. Transforms HTML content to Markdown using MarkdownifyTransformer
+4. Processes local documents (TXT, MD, PDF, DOCX)
 """
 
 from langchain_core.prompts import PromptTemplate
@@ -16,6 +17,10 @@ from langchain_openai import ChatOpenAI
 from langchain_openai import AzureChatOpenAI
 from langchain_community.tools import BraveSearch
 from langchain_community.document_loaders import AsyncHtmlLoader
+from langchain_community.document_loaders import TextLoader
+from langchain_community.document_loaders import UnstructuredMarkdownLoader
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.document_loaders import UnstructuredWordDocumentLoader
 from langchain.agents import create_tool_calling_agent
 from langchain.agents import AgentExecutor
 from readability import Document
@@ -26,19 +31,107 @@ from langgraph.prebuilt import create_react_agent
 import pyhtml2md
 import time
 import argparse
+import pathlib
 
 # Load environment variables
 load_dotenv()
 
+# Default background image URL
+DEFAULT_BACKGROUND_URL = 'https://marp.app/assets/hero-background.svg'
+
+# Function to create prompt templates with dynamic background image URL
+
+
+def create_search_prompt(bg_url):
+    return PromptTemplate(input_variables=["agent_scratchpad", "input"], template=f"""
+Create a MARP presentation using CommonMark based on research. Research all documents that you need to fully understand a topic.
+Only output valid Markdown MARP text, do not add anything else.
+Please be a bit verbose in the slides, include images, tables, bulleted and ordered lists, links, emoticons and code samples where applicable.
+Be creative with the graphics, stick with the content that is provided and remember that you can include images and icons full-page if this helps the creative flow.
+Content of the presentation shall be very effective and engaging, and shall follow a logical flow typical of the world-class presentations.
+
+MARP file must start with the following header, unchanged:
+
+---
+marp: true
+theme: default
+paginate: true
+_class: lead
+backgroundColor: #fff
+backgroundImage: url('{bg_url}')
+---
+
+Topic to research is: {{input}}
+
+{{agent_scratchpad}}
+""")
+
+
+def create_url_prompt(bg_url):
+    return PromptTemplate(input_variables=["agent_scratchpad", "input"], template=f"""
+Create a MARP presentation using CommonMark based on the following url: {{input}}.
+Only output valid Markdown MARP text, do not add anything else.
+Please be a bit verbose in the slides, include images, tables, bulleted and ordered lists, links, emoticons and code samples where applicable.
+Be creative with the graphics, stick with the content that is provided and remember that you can include images and icons full-page if this helps the creative flow.
+Content of the presentation shall be very effective and engaging, and shall follow a logical flow typical of world-class presentations.
+
+MARP file must start with the following header, unchanged:
+
+---
+marp: true
+theme: default
+paginate: true
+_class: lead
+backgroundColor: #fff
+backgroundImage: url('{bg_url}')
+---
+
+{{agent_scratchpad}}
+""")
+
+
+def create_document_prompt(bg_url):
+    return PromptTemplate(input_variables=["agent_scratchpad", "input"], template=f"""
+Create a MARP presentation using CommonMark based on the following document: {{input}}
+Only output valid Markdown MARP text, do not add anything else.
+Please be a bit verbose in the slides, include images, tables, bulleted and ordered lists, links, emoticons and code samples where applicable.
+Be creative with the graphics, stick with the content that is provided and remember that you can include images and icons full-page if this helps the creative flow.
+Content of the presentation shall be very effective and engaging, and shall follow a logical flow typical of world-class presentations.
+
+MARP file must start with the following header, unchanged:
+
+---
+marp: true
+theme: default
+paginate: true
+_class: lead
+backgroundColor: #fff
+backgroundImage: url('{bg_url}')
+---
+
+{{agent_scratchpad}}
+""")
+
+
 # Parse command-line arguments
 parser = argparse.ArgumentParser(
     description="Langchain Agent for MARP presentations.")
-parser.add_argument("-q", "--query", type=str, required=True,
-                    help="The query to search and generate a MARP presentation for.")
+input_group = parser.add_mutually_exclusive_group(required=True)
+input_group.add_argument("-q", "--query", type=str,
+                         help="The query to search and generate a MARP presentation for.")
+input_group.add_argument("-u", "--url", type=str,
+                         help="The URL to scrape and generate a MARP presentation for.")
+input_group.add_argument("-d", "--document", type=str,
+                         help="Local document (TXT, MD, PDF, DOCX) to extract content from for the presentation.")
+parser.add_argument("-b", "--background", type=str,
+                    help="Custom background image URL for the presentation (default: https://marp.app/assets/hero-background.svg)")
 args = parser.parse_args()
 
-# Use the query from the command-line arguments
+# Use the query, url or document from the command-line arguments
 query = args.query
+url = args.url
+document_path = args.document
+background_url = args.background if args.background else DEFAULT_BACKGROUND_URL
 
 # API Keys
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -88,6 +181,42 @@ def extract_markdown_from_url(url: str) -> Optional[str]:
         return None
 
 
+def extract_text_from_document(file_path: str) -> Optional[str]:
+    """
+    Extract text content from various document formats.
+
+    Args:
+        file_path: Path to the document file
+
+    Returns:
+        Text content if successful, None otherwise
+    """
+    try:
+        file_extension = pathlib.Path(file_path).suffix.lower()
+
+        if file_extension == '.txt':
+            loader = TextLoader(file_path)
+        elif file_extension in ['.md', '.markdown']:
+            loader = UnstructuredMarkdownLoader(file_path)
+        elif file_extension == '.pdf':
+            loader = PyPDFLoader(file_path)
+        elif file_extension in ['.docx', '.doc']:
+            loader = UnstructuredWordDocumentLoader(file_path)
+        else:
+            raise ValueError(f"Unsupported file format: {file_extension}")
+
+        docs = loader.load()
+
+        if not docs:
+            return None
+
+        # Combine all document pages/sections
+        return "\n\n".join([doc.page_content for doc in docs])
+    except Exception as e:
+        print(f"Error extracting text from document {file_path}: {str(e)}")
+        return None
+
+
 def sanitize_filename(query: str) -> str:
     """
     Sanitize the query to create a safe filename.
@@ -123,51 +252,60 @@ else:
 # Create the agent
 memory = MemorySaver()
 model = llm
-tools = [
-    Tool(
-        name="BraveSearch",
-        description="Useful for searching the web for information.",
-        func=search_web,
-    ),
-    Tool(
-        name="MarkdownExtractor",
-        description="Extract markdown content from a webpage URL.",
-        func=extract_markdown_from_url,
-    )
-]
-agent_executor = create_react_agent(model, tools, checkpointer=memory)
 
-prompt = PromptTemplate(input_variables=["agent_scratchpad", "input"], template="""
-Create a MARP presentation using CommonMark based on research. Research all documents that you need to fully understand a topic.
-Only output valid Markdown MARP text, do not add anything else.
-Please be a bit verbose in the slides, include images, tables, bulleted and ordered lists, links, emoticons and code samples where applicable.
-Be creative with the graphics, stick with the content that is provided and remember that you can include images and icons full-page if this helps the creative flow.
-Content of the presentation shall be very effective and engaging, and shall follow a logical flow typical of the world-class presentations.
+# Define the tools
+search_tool = Tool(
+    name="BraveSearch",
+    description="Useful for searching the web for information.",
+    func=search_web,
+)
+extract_markdown_from_url_tool = Tool(
+    name="MarkdownExtractor",
+    description="Extract markdown content from a webpage URL.",
+    func=extract_markdown_from_url,
+)
+extract_text_from_document_tool = Tool(
+    name="TextExtractor",
+    description="Extract text content from a local document.",
+    func=extract_text_from_document,
+)
 
-MARP file must start with the following header, unchanged:
+# Process based on input type
+if document_path:
+    # Process document input
+    prompt = create_document_prompt(background_url)
+    tools = [extract_text_from_document_tool]
+    input_value = document_path
 
----
-marp: true
-theme: default
-paginate: true
-_class: lead
-backgroundColor: #fff
-backgroundImage: url('https://marp.app/assets/hero-background.svg')
----
+    # Use document name for the filename
+    doc_name = os.path.basename(document_path)
+    safe_filename = sanitize_filename(os.path.splitext(doc_name)[0])
+elif url:
+    # Process URL input
+    prompt = create_url_prompt(background_url)
+    tools = [extract_markdown_from_url_tool]
+    input_value = url
 
-Topic to research is: {input}
+    # Use URL for the filename
+    safe_filename = sanitize_filename(url)
+else:
+    # Process search query input
+    prompt = create_search_prompt(background_url)
+    tools = [search_tool, extract_markdown_from_url_tool]
+    input_value = query
 
-{agent_scratchpad}
-""")
+    # Use query for the filename
+    safe_filename = sanitize_filename(query)
 
+# Create and execute the agent
 agent = create_tool_calling_agent(llm, tools, prompt)
 agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+result = agent_executor.invoke({"input": input_value})
+result_output = result['output']
 
-result = agent_executor.invoke({"input": query})
+# Ensure outputs directory exists
+os.makedirs("outputs", exist_ok=True)
 
-# Sanitize the query for the filename
-safe_query = sanitize_filename(query)
-
-# Save result['output'] to a file in the outputs/ folder
-with open(f"outputs/{safe_query}.md", "w") as f:
-    f.write(result['output'])
+# Save result to a file in the outputs/ folder
+with open(f"outputs/{safe_filename}.md", "w") as f:
+    f.write(result_output)
