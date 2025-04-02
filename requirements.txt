@@ -7,3 +7,7 @@ markdownify
 readability-lxml
 pyhtml2md
 lxml_html_clean
+python-docx
+pypdf
+unstructured
+pathlib
