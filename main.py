@@ -71,9 +71,10 @@ Topic to research is: {{input}}
 def create_url_prompt(bg_url):
     return PromptTemplate(input_variables=["agent_scratchpad", "input"], template=f"""
 Create a MARP presentation using CommonMark based on the following url: {{input}}.
+First, download and extract the content from the url. Then, elaborate the slides.
 Only output valid Markdown MARP text, do not add anything else.
 Please be a bit verbose in the slides, include images, tables, bulleted and ordered lists, links, emoticons and code samples where applicable.
-Be creative with the graphics, stick with the content that is provided and remember that you can include images and icons full-page if this helps the creative flow.
+Be creative with the graphics, stick with the content that you extract and remember that you can include images and icons full-page if this helps the creative flow.
 Content of the presentation shall be very effective and engaging, and shall follow a logical flow typical of world-class presentations.
 Image URLs shall be taken from the url scraped, do not make them up.
 
