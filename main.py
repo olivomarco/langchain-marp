@@ -46,9 +46,10 @@ def create_search_prompt(bg_url):
     return PromptTemplate(input_variables=["agent_scratchpad", "input"], template=f"""
 Create a MARP presentation using CommonMark based on research. Research all documents that you need to fully understand a topic.
 Only output valid Markdown MARP text, do not add anything else.
-Please be a bit verbose in the slides, include images, tables, bulleted and ordered lists, links, emoticons and code samples where applicable.
+Please be a bit verbose in the slides, include images from research material, tables, bulleted and ordered lists, links, emoticons and code samples where applicable.
 Be creative with the graphics, stick with the content that is provided and remember that you can include images and icons full-page if this helps the creative flow.
 Content of the presentation shall be very effective and engaging, and shall follow a logical flow typical of the world-class presentations.
+Image URLs shall be taken directly from the researched content, do not make them up.
 
 MARP file must start with the following header, unchanged:
 
@@ -74,6 +75,7 @@ Only output valid Markdown MARP text, do not add anything else.
 Please be a bit verbose in the slides, include images, tables, bulleted and ordered lists, links, emoticons and code samples where applicable.
 Be creative with the graphics, stick with the content that is provided and remember that you can include images and icons full-page if this helps the creative flow.
 Content of the presentation shall be very effective and engaging, and shall follow a logical flow typical of world-class presentations.
+Image URLs shall be taken from the url scraped, do not make them up.
 
 MARP file must start with the following header, unchanged:
 
@@ -94,9 +96,10 @@ def create_document_prompt(bg_url):
     return PromptTemplate(input_variables=["agent_scratchpad", "input"], template=f"""
 Create a MARP presentation using CommonMark based on the following document: {{input}}
 Only output valid Markdown MARP text, do not add anything else.
-Please be a bit verbose in the slides, include images, tables, bulleted and ordered lists, links, emoticons and code samples where applicable.
-Be creative with the graphics, stick with the content that is provided and remember that you can include images and icons full-page if this helps the creative flow.
+Please be a bit verbose in the slides, include, tables, bulleted and ordered lists, links, emoticons and code samples where applicable.
+Be creative with the graphics, stick with the content that is provided.
 Content of the presentation shall be very effective and engaging, and shall follow a logical flow typical of world-class presentations.
+
 
 MARP file must start with the following header, unchanged:
 
@@ -176,6 +179,7 @@ def extract_markdown_from_url(url: str) -> Optional[str]:
         doc = Document(docs[0].page_content)
 
         return pyhtml2md.convert(doc.summary())
+        #return doc.summary()
     except Exception as e:
         print(f"Error extracting markdown from {url}: {str(e)}")
         return None
@@ -261,12 +265,12 @@ search_tool = Tool(
 )
 extract_markdown_from_url_tool = Tool(
     name="MarkdownExtractor",
-    description="Extract markdown content from a webpage URL.",
+    description="Useful to extract markdown content from a webpage URL.",
     func=extract_markdown_from_url,
 )
 extract_text_from_document_tool = Tool(
     name="TextExtractor",
-    description="Extract text content from a local document.",
+    description="Useful to extract text content from a local document.",
     func=extract_text_from_document,
 )
 
