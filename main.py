@@ -1,7 +1,7 @@
 """
-Langchain Agent with Brave Search & Markdown Extraction
+Langchain Agent with DuckDuckGo Search & Markdown Extraction
 This script implements a Langchain agent that:
-1. Searches the web using Brave Search API
+1. Searches the web using DuckDuckGo Search API
 2. Downloads web content from search results
 3. Transforms HTML content to Markdown using MarkdownifyTransformer
 4. Processes local documents (TXT, MD, PDF, DOCX)
@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from langchain.agents import Tool
 from langchain_openai import ChatOpenAI
 from langchain_openai import AzureChatOpenAI
-from langchain_community.tools import BraveSearch
+from langchain_community.tools import DuckDuckGoSearchRun
 from langchain_community.document_loaders import AsyncHtmlLoader
 from langchain_community.document_loaders import TextLoader
 from langchain_community.document_loaders import UnstructuredMarkdownLoader
@@ -139,23 +139,19 @@ background_url = args.background if args.background else DEFAULT_BACKGROUND_URL
 
 # API Keys
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-BRAVE_API_KEY = os.getenv("BRAVE_API_KEY")
 
 # Azure OpenAI configuration
 AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
 
-# Initialize Brave Search
-brave_search_tool = BraveSearch.from_api_key(
-    api_key=BRAVE_API_KEY, search_kwargs={"count": 10})
-
+# Initialize DuckDuckGo Search
+duckduckgo_search_tool = DuckDuckGoSearchRun()
 
 def search_web(query: str) -> List[Dict]:
-    """Search the web using Brave Search API."""
-    time.sleep(1)   # Add a delay to avoid rate limiting on free tier
+    """Search the web using DuckDuckGo Search API."""
     print(f"Searching the web for: {query}")
-    search_results = brave_search_tool.run(query)
+    search_results = duckduckgo_search_tool.run(query)
     return search_results
 
 
@@ -260,7 +256,7 @@ model = llm
 
 # Define the tools
 search_tool = Tool(
-    name="BraveSearch",
+    name="Search",
     description="Useful for searching the web for information.",
     func=search_web,
 )
