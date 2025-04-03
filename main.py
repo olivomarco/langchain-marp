@@ -44,12 +44,21 @@ DEFAULT_BACKGROUND_URL = 'https://marp.app/assets/hero-background.svg'
 
 def create_search_prompt(bg_url):
     return PromptTemplate(input_variables=["agent_scratchpad", "input"], template=f"""
-Create a MARP presentation using CommonMark based on research. Research all documents that you need to fully understand a topic.
-Only output valid Markdown MARP text, do not add anything else.
-Please be a bit verbose in the slides, include images from research material, tables, bulleted and ordered lists, links, emoticons and code samples where applicable.
-Be creative with the graphics, stick with the content that is provided and remember that you can include images and icons full-page if this helps the creative flow.
-Content of the presentation shall be very effective and engaging, and shall follow a logical flow typical of the world-class presentations.
-Image URLs shall be taken directly from the researched content, do not make them up.
+## Persona:
+You are a Cloud Solution Architect that delivers top-notch presentations to your customers on technological-related topics.
+
+## Task:
+Create a MARP presentation using CommonMark based on research.
+First, research all documents that you need, extract texts and links out of those and fully understand the subject. Finally, create the presentation.
+
+## Rules:
+- Only output valid Markdown MARP text, do not add anything else.
+- Please be verbose in the text used in the slides
+- Include images from research material, tables, bulleted and ordered lists, links, emoticons and code samples where applicable.
+- Be creative with the graphics, stick with the content that is provided and remember that you can include images and icons full-page if this helps the creative flow.
+- Content of the presentation shall be very effective and engaging
+- Content shall follow a logical flow typical of the world-class presentations.
+- Image URLs shall be taken directly from the researched content, do not make them up.
 
 MARP file must start with the following header, unchanged:
 
@@ -62,6 +71,7 @@ backgroundColor: #fff
 backgroundImage: url('{bg_url}')
 ---
 
+## Topic
 Topic to research is: {{input}}
 
 {{agent_scratchpad}}
@@ -70,13 +80,21 @@ Topic to research is: {{input}}
 
 def create_url_prompt(bg_url):
     return PromptTemplate(input_variables=["agent_scratchpad", "input"], template=f"""
+## Persona:
+You are a Cloud Solution Architect that delivers top-notch presentations to your customers on technological-related topics.
+
+## Task:
 Create a MARP presentation using CommonMark based on the following url: {{input}}.
-First, download and extract the content from the url. Then, elaborate the slides.
-Only output valid Markdown MARP text, do not add anything else.
-Please be a bit verbose in the slides, include images, tables, bulleted and ordered lists, links, emoticons and code samples where applicable.
-Be creative with the graphics, stick with the content that you extract and remember that you can include images and icons full-page if this helps the creative flow.
-Content of the presentation shall be very effective and engaging, and shall follow a logical flow typical of world-class presentations.
-Image URLs shall be taken from the url scraped, do not make them up.
+First, download and extract the content from the url. Finally, elaborate the slides.
+
+## Rules:
+- Only output valid Markdown MARP text, do not add anything else.
+- Please be verbose in the text used in the slides
+- Include images, tables, bulleted and ordered lists, links, emoticons and code samples where applicable
+- Be creative with the graphics, stick with the content that you extract and remember that you can include images and icons full-page if this helps the creative flow.
+- Content of the presentation shall be very effective and engaging
+- Content shall follow a logical flow typical of world-class presentations.
+- Image URLs shall be taken from the url scraped, do not make them up.
 
 MARP file must start with the following header, unchanged:
 
@@ -95,12 +113,19 @@ backgroundImage: url('{bg_url}')
 
 def create_document_prompt(bg_url):
     return PromptTemplate(input_variables=["agent_scratchpad", "input"], template=f"""
-Create a MARP presentation using CommonMark based on the following document: {{input}}
-Only output valid Markdown MARP text, do not add anything else.
-Please be a bit verbose in the slides, include, tables, bulleted and ordered lists, links, emoticons and code samples where applicable.
-Be creative with the graphics, stick with the content that is provided.
-Content of the presentation shall be very effective and engaging, and shall follow a logical flow typical of world-class presentations.
+## Persona:
+You are a Cloud Solution Architect that delivers top-notch presentations to your customers on technological-related topics.
 
+## Task:
+Create a MARP presentation using CommonMark based on the following document: {{input}}
+
+## Rules:
+- Only output valid Markdown MARP text, do not add anything else.
+- Please be verbose in the text used in the slides
+- Include, tables, bulleted and ordered lists, links, emoticons and code samples where applicable.
+- Be creative with the graphics, stick with the content that is provided.
+- Content of the presentation shall be very effective and engaging
+- Content shall follow a logical flow typical of world-class presentations.
 
 MARP file must start with the following header, unchanged:
 
@@ -144,14 +169,24 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
-
-# Initialize DuckDuckGo Search
-duckduckgo_search_tool = DuckDuckGoSearchRun()
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
 
 def search_web(query: str) -> List[Dict]:
-    """Search the web using DuckDuckGo Search API."""
+    """
+    Search the web using DuckDuckGo Search API.
+
+    Args:
+        query: The search query
+
+    Returns:
+        A list of search results as dictionaries
+    """
     print(f"Searching the web for: {query}")
-    search_results = duckduckgo_search_tool.run(query)
+
+    # Initialize DuckDuckGo Search
+    duckduckgo_search = DuckDuckGoSearchRun()
+
+    search_results = duckduckgo_search.run(query)
     return search_results
 
 
@@ -237,8 +272,8 @@ if AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT_NA
     llm = AzureChatOpenAI(
         azure_deployment=AZURE_OPENAI_DEPLOYMENT_NAME,
         azure_endpoint=AZURE_OPENAI_ENDPOINT,
-        api_version="2024-10-21",
-        temperature=0
+        api_version=AZURE_OPENAI_API_VERSION,
+        #temperature=0
     )
 elif OPENAI_API_KEY:
     llm = ChatOpenAI(
