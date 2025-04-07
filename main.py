@@ -65,7 +65,7 @@ MARP file must start with the following header, unchanged:
 ---
 marp: true
 theme: default
-paginate: true
+paginate: false
 _class: lead
 backgroundColor: #fff
 backgroundImage: url('{bg_url}')
@@ -101,7 +101,7 @@ MARP file must start with the following header, unchanged:
 ---
 marp: true
 theme: default
-paginate: true
+paginate: false
 _class: lead
 backgroundColor: #fff
 backgroundImage: url('{bg_url}')
@@ -132,7 +132,7 @@ MARP file must start with the following header, unchanged:
 ---
 marp: true
 theme: default
-paginate: true
+paginate: false
 _class: lead
 backgroundColor: #fff
 backgroundImage: url('{bg_url}')
