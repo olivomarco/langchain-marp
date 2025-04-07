@@ -39,8 +39,6 @@ load_dotenv()
 # Default background image URL
 DEFAULT_BACKGROUND_URL = 'https://marp.app/assets/hero-background.svg'
 
-# Function to create prompt templates with dynamic background image URL
-
 
 def create_search_prompt(bg_url):
     return PromptTemplate(input_variables=["agent_scratchpad", "input"], template=f"""
@@ -142,35 +140,6 @@ backgroundImage: url('{bg_url}')
 """)
 
 
-# Parse command-line arguments
-parser = argparse.ArgumentParser(
-    description="Langchain Agent for MARP presentations.")
-input_group = parser.add_mutually_exclusive_group(required=True)
-input_group.add_argument("-q", "--query", type=str,
-                         help="The query to search and generate a MARP presentation for.")
-input_group.add_argument("-u", "--url", type=str,
-                         help="The URL to scrape and generate a MARP presentation for.")
-input_group.add_argument("-d", "--document", type=str,
-                         help="Local document (TXT, MD, PDF, DOCX) to extract content from for the presentation.")
-parser.add_argument("-b", "--background", type=str,
-                    help="Custom background image URL for the presentation (default: https://marp.app/assets/hero-background.svg)")
-args = parser.parse_args()
-
-# Use the query, url or document from the command-line arguments
-query = args.query
-url = args.url
-document_path = args.document
-background_url = args.background if args.background else DEFAULT_BACKGROUND_URL
-
-# API Keys
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-# Azure OpenAI configuration
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
-
 def search_web(query: str) -> List[Dict]:
     """
     Search the web using DuckDuckGo Search API.
@@ -211,7 +180,7 @@ def extract_markdown_from_url(url: str) -> Optional[str]:
         doc = Document(docs[0].page_content)
 
         return pyhtml2md.convert(doc.summary())
-        #return doc.summary()
+        # return doc.summary()
     except Exception as e:
         print(f"Error extracting markdown from {url}: {str(e)}")
         return None
@@ -267,13 +236,43 @@ def sanitize_filename(query: str) -> str:
     return re.sub(r'[^a-zA-Z0-9_\-]', '', query.replace(' ', '_'))
 
 
+# Parse command-line arguments
+parser = argparse.ArgumentParser(
+    description="Langchain Agent for MARP presentations.")
+input_group = parser.add_mutually_exclusive_group(required=True)
+input_group.add_argument("-q", "--query", type=str,
+                         help="The query to search and generate a MARP presentation for.")
+input_group.add_argument("-u", "--url", type=str,
+                         help="The URL to scrape and generate a MARP presentation for.")
+input_group.add_argument("-d", "--document", type=str,
+                         help="Local document (TXT, MD, PDF, DOCX) to extract content from for the presentation.")
+parser.add_argument("-b", "--background", type=str,
+                    help="Custom background image URL for the presentation (default: https://marp.app/assets/hero-background.svg)")
+args = parser.parse_args()
+
+# Use the query, url or document from the command-line arguments
+query = args.query
+url = args.url
+document_path = args.document
+background_url = args.background if args.background else DEFAULT_BACKGROUND_URL
+
+# API Keys
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# Azure OpenAI configuration
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
+
+
 # Initialize the LLM
 if AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT_NAME:
     llm = AzureChatOpenAI(
         azure_deployment=AZURE_OPENAI_DEPLOYMENT_NAME,
         azure_endpoint=AZURE_OPENAI_ENDPOINT,
         api_version=AZURE_OPENAI_API_VERSION,
-        #temperature=0
+        # temperature=0
     )
 elif OPENAI_API_KEY:
     llm = ChatOpenAI(
