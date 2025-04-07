@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from langchain.agents import Tool
 from langchain_openai import ChatOpenAI
 from langchain_openai import AzureChatOpenAI
-from langchain_community.tools import DuckDuckGoSearchRun
+from langchain_community.tools import DuckDuckGoSearchResults
 from langchain_community.document_loaders import AsyncHtmlLoader
 from langchain_community.document_loaders import TextLoader
 from langchain_community.document_loaders import UnstructuredMarkdownLoader
@@ -47,16 +47,17 @@ You are a Cloud Solution Architect that delivers top-notch presentations to your
 
 ## Task:
 Create a MARP presentation using CommonMark based on research.
-First, research all documents that you need, extract texts and links out of those and fully understand the subject. Finally, create the presentation.
+First, research all documents that you find in search, extract texts and links out of those and fully understand the subject.
+Finally, after you have parsed ALL documents in the search results, create the presentation.
 
 ## Rules:
-- Only output valid Markdown MARP text, do not add anything else.
+- Only output valid Markdown MARP text, do not add anything else
 - Please be verbose in the text used in the slides
 - Include images from research material, tables, bulleted and ordered lists, links, emoticons and code samples where applicable.
 - Be creative with the graphics, stick with the content that is provided and remember that you can include images and icons full-page if this helps the creative flow.
 - Content of the presentation shall be very effective and engaging
-- Content shall follow a logical flow typical of the world-class presentations.
-- Image URLs shall be taken directly from the researched content, do not make them up.
+- Content shall follow a logical flow typical of the world-class presentations
+- Image URLs shall be taken directly from the researched content, do not make them up
 
 MARP file must start with the following header, unchanged:
 
@@ -86,13 +87,13 @@ Create a MARP presentation using CommonMark based on the following url: {{input}
 First, download and extract the content from the url. Finally, elaborate the slides.
 
 ## Rules:
-- Only output valid Markdown MARP text, do not add anything else.
+- Only output valid Markdown MARP text, do not add anything else
 - Please be verbose in the text used in the slides
 - Include images, tables, bulleted and ordered lists, links, emoticons and code samples where applicable
 - Be creative with the graphics, stick with the content that you extract and remember that you can include images and icons full-page if this helps the creative flow.
 - Content of the presentation shall be very effective and engaging
-- Content shall follow a logical flow typical of world-class presentations.
-- Image URLs shall be taken from the url scraped, do not make them up.
+- Content shall follow a logical flow typical of world-class presentations
+- Image URLs shall be taken from the url scraped, do not make them up
 
 MARP file must start with the following header, unchanged:
 
@@ -118,12 +119,12 @@ You are a Cloud Solution Architect that delivers top-notch presentations to your
 Create a MARP presentation using CommonMark based on the following document: {{input}}
 
 ## Rules:
-- Only output valid Markdown MARP text, do not add anything else.
+- Only output valid Markdown MARP text, do not add anything else
 - Please be verbose in the text used in the slides
-- Include, tables, bulleted and ordered lists, links, emoticons and code samples where applicable.
-- Be creative with the graphics, stick with the content that is provided.
+- Include, tables, bulleted and ordered lists, links, emoticons and code samples where applicable
+- Be creative with the graphics, stick with the content that is provided
 - Content of the presentation shall be very effective and engaging
-- Content shall follow a logical flow typical of world-class presentations.
+- Content shall follow a logical flow typical of world-class presentations
 
 MARP file must start with the following header, unchanged:
 
@@ -153,7 +154,7 @@ def search_web(query: str) -> List[Dict]:
     print(f"Searching the web for: {query}")
 
     # Initialize DuckDuckGo Search
-    duckduckgo_search = DuckDuckGoSearchRun()
+    duckduckgo_search = DuckDuckGoSearchResults()
 
     search_results = duckduckgo_search.run(query)
     return search_results
@@ -177,10 +178,10 @@ def extract_markdown_from_url(url: str) -> Optional[str]:
         if not docs:
             return None
 
-        doc = Document(docs[0].page_content)
+        print(f"Extracting markdown from {url}")
 
+        doc = Document(docs[0].page_content)
         return pyhtml2md.convert(doc.summary())
-        # return doc.summary()
     except Exception as e:
         print(f"Error extracting markdown from {url}: {str(e)}")
         return None
