@@ -7,173 +7,171 @@ This script implements a Langchain agent that:
 4. Processes local documents (TXT, MD, PDF, DOCX)
 """
 
-from langchain_core.prompts import PromptTemplate
 import os
 import re
-from typing import Dict, List, Optional
+import argparse
+
 from dotenv import load_dotenv
-from langchain.agents import Tool
-from langchain_openai import ChatOpenAI
-from langchain_openai import AzureChatOpenAI
+from langchain_core.prompts import PromptTemplate
+from langchain.tools import tool
+from langchain_openai import ChatOpenAI, AzureChatOpenAI
 from langchain_community.tools import DuckDuckGoSearchResults
 from langchain_community.document_loaders import AsyncHtmlLoader
-from langchain_community.document_loaders import TextLoader
-from langchain_community.document_loaders import UnstructuredMarkdownLoader
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_community.document_loaders import UnstructuredWordDocumentLoader
-from langchain.agents import create_tool_calling_agent
-from langchain.agents import AgentExecutor
 from readability import Document
-
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.prebuilt import create_react_agent
+from langchain.chains.llm import LLMChain
 
 import pyhtml2md
-import time
-import argparse
-import pathlib
 
 # Load environment variables
 load_dotenv()
 
-# Default background image URL
+# Constants
 DEFAULT_BACKGROUND_URL = 'https://marp.app/assets/hero-background.svg'
 
 
-def create_search_prompt(bg_url):
-    return PromptTemplate(input_variables=["agent_scratchpad", "input"], template=f"""
-## Persona:
-You are a Cloud Solution Architect that delivers top-notch presentations to your customers on technological-related topics.
+# Prompts
+def create_prompts():
+    """Create and return prompt templates used by the application."""
 
-## Tasks:
+    generate_queries_prompt = PromptTemplate.from_template("""
+    You are a research assistant. Based on the following text, suggest 3 to 5 precise follow-up search queries
+    that could expand or deepen the understanding of the topic. These queries should be clear and relevant to the content,
+    and ready to be used in a web search engine.
+    Output only the text of the queries, one per line, without numbers or bullet points.
 
-1. Search the web for relevant information about the topic: {{input}}.
-2. Read and parse all the URLs retrieved from web search.
-3. Expand the researched material into more search queries that you shall web search to broaden the scope of the presentation.
-4. Do a search query for each search query
-5. Extract the content from all search results.
-6. Create a MARP presentation using CommonMark that summarizes all the extracted information.
+    Text:
+    ---
+    {content}
+    ---
 
-## Rules:
-- There is no minimum or maximum number of slides: do all those that are needed
-- Only output valid Markdown MARP text, do not add anything else
-- Please be verbose in the text used in the slides
-- Include images from research material, tables, bulleted and ordered lists, links, emoticons and code samples where applicable.
-- Be creative with the graphics, stick with the content that is provided and remember that you can include images and icons full-page if this helps the creative flow.
-- Content of the presentation shall be very effective and engaging
-- Content shall follow a logical flow typical of the world-class presentations
-4. Perform an additional search for each generated query
+    Search Queries:
+    """)
 
-MARP file must start with the following header, unchanged:
+    summarize_prompt = PromptTemplate.from_template("""
+    You are a summarization assistant. Read the following content and write a clear, concise summary
+    highlighting the main points. Aim for a maximum of 2 paragraphs.
 
----
-marp: true
-theme: default
-paginate: false
-_class: lead
-backgroundColor: #fff
-backgroundImage: url('{bg_url}')
----
+    Content:
+    ---
+    {content}
+    ---
 
-{{agent_scratchpad}}
-""")
+    Summary:
+    """)
 
+    marp_prompt = PromptTemplate(input_variables=["bg_url", "content"], template="""
+    ## Persona:
+    You are a Cloud Solution Architect that delivers top-notch presentations to your customers on technological-related topics.
 
-def create_url_prompt(bg_url):
-    return PromptTemplate(input_variables=["agent_scratchpad", "input"], template=f"""
-## Persona:
-You are a Cloud Solution Architect that delivers top-notch presentations to your customers on technological-related topics.
+    ## Tasks:
+    Create a MARP presentation using CommonMark that summarizes all the researched content.
+    Researched content is:
+    ---
+    {content}
+    ---
 
-## Task:
-Create a MARP presentation using CommonMark based on the following url: {{input}}.
-First, download and extract the content from the url. Finally, elaborate the slides.
+    ## Rules:
+    - There is no minimum or maximum number of slides: do all those that are needed to fully explain the topic
+    - Only output valid Markdown MARP text, do not add anything else
+    - Please be verbose in the text used in the slides
+    - Include images from research material, tables, bulleted and ordered lists, links, emoticons and code samples where applicable.
+    - Be creative with the graphics, stick with the content that is provided and remember that you can include images and icons full-page if this helps the creative flow.
+    - Content of the presentation shall be very effective and engaging
+    - Content shall follow a logical flow typical of the world-class presentations
+    - Image URLs shall be taken directly from the researched content, do not make them up
+    - In presentation first slide, always add a cool title (h1 header) and a subtitle (h2 header) related to the topic
+    - In presentation first slide, always prepend the speaker name with "> Presented by:" (to quote it)
+    - Do not add any dates for the presentation
+    - In the slides, for titles use h2-level headings
 
-## Rules:
-- There is no minimum or maximum number of slides: do all those that are needed
-- Only output valid Markdown MARP text, do not add anything else
-- Please be verbose in the text used in the slides
-- Include images, tables, bulleted and ordered lists, links, emoticons and code samples where applicable
-- Be creative with the graphics, stick with the content that you extract and remember that you can include images and icons full-page if this helps the creative flow.
-- Content of the presentation shall be very effective and engaging
-- Content shall follow a logical flow typical of world-class presentations
-- Image URLs shall be taken from the url scraped, do not make them up
+    MARP file must start with the following header, unchanged:
 
-MARP file must start with the following header, unchanged:
+    ---
+    marp: true
+    theme: default
+    paginate: false
+    _class: lead
+    backgroundColor: #fff
+    backgroundImage: url('{bg_url}')
+    ---
+    """)
 
----
-marp: true
-theme: default
-paginate: false
-_class: lead
-backgroundColor: #fff
-backgroundImage: url('{bg_url}')
----
-
-{{agent_scratchpad}}
-""")
+    return generate_queries_prompt, summarize_prompt, marp_prompt
 
 
-def create_document_prompt(bg_url):
-    return PromptTemplate(input_variables=["agent_scratchpad", "input"], template=f"""
-## Persona:
-You are a Cloud Solution Architect that delivers top-notch presentations to your customers on technological-related topics.
+def initialize_llm():
+    """Initialize and return the LLM based on available credentials."""
+    # API Keys
+    openai_api_key = os.getenv("OPENAI_API_KEY")
 
-## Task:
-Create a MARP presentation using CommonMark based on the following document: {{input}}
+    # Azure OpenAI configuration
+    azure_openai_api_key = os.getenv("AZURE_OPENAI_API_KEY")
+    azure_openai_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    azure_openai_deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
+    azure_openai_api_version = os.getenv("AZURE_OPENAI_API_VERSION")
 
-## Rules:
-- There is no minimum or maximum number of slides: do all those that are needed
-- Only output valid Markdown MARP text, do not add anything else
-- Please be verbose in the text used in the slides
-- Include, tables, bulleted and ordered lists, links, emoticons and code samples where applicable
-- Be creative with the graphics, stick with the content that is provided
-- Content of the presentation shall be very effective and engaging
-- Content shall follow a logical flow typical of world-class presentations
-
-MARP file must start with the following header, unchanged:
-
----
-marp: true
-theme: default
-paginate: false
-_class: lead
-backgroundColor: #fff
-backgroundImage: url('{bg_url}')
----
-
-{{agent_scratchpad}}
-""")
+    # Initialize the LLM
+    if azure_openai_api_key and azure_openai_endpoint and azure_openai_deployment_name:
+        return AzureChatOpenAI(
+            azure_deployment=azure_openai_deployment_name,
+            azure_endpoint=azure_openai_endpoint,
+            api_version=azure_openai_api_version,
+        )
+    elif openai_api_key:
+        return ChatOpenAI(
+            model="gpt-4o",
+            temperature=0,
+            openai_api_key=openai_api_key
+        )
+    else:
+        raise ValueError(
+            "No valid OpenAI or Azure OpenAI API key configuration found.")
 
 
-def search_web(query: str) -> List[Dict]:
+def create_chains(llm):
+    """Create and return all LLM chains used by the application."""
+    generate_queries_prompt, summarize_prompt, marp_prompt = create_prompts()
+
+    return {
+        "generate_queries": generate_queries_prompt | llm,
+        "summarize": summarize_prompt | llm,
+        "marp": marp_prompt | llm
+        # "generate_queries": LLMChain(llm=llm, prompt=generate_queries_prompt),
+        # "summarize": LLMChain(llm=llm, prompt=summarize_prompt),
+        # "marp": LLMChain(llm=llm, prompt=marp_prompt)
+    }
+
+
+def sanitize_filename(query: str) -> str:
     """
-    Search the web using DuckDuckGo Search API.
+    Sanitize the query to create a safe filename.
 
     Args:
-        query: The search query
+        query: The input query string.
 
     Returns:
-        A list of search results as dictionaries
+        A sanitized string safe for use as a filename.
     """
+    # Replace spaces with underscores and remove invalid characters
+    return re.sub(r'[^a-zA-Z0-9_\-]', '', query.replace(' ', '_'))
+
+
+@tool
+def web_search_tool(query: str) -> str:
+    """Performs a web search for the given query."""
     print(f"Searching the web for: {query}")
 
     # Initialize DuckDuckGo Search
-    duckduckgo_search = DuckDuckGoSearchResults()
+    duckduckgo_search = DuckDuckGoSearchResults(
+        output_format='list', num_results=5)
 
-    search_results = duckduckgo_search.run(query)
+    search_results = duckduckgo_search.invoke(query)
     return search_results
 
 
-def extract_markdown_from_url(url: str) -> Optional[str]:
-    """
-    Download content from a URL and convert it to markdown.
-
-    Args:
-        url: The URL to download content from
-
-    Returns:
-        Markdown content if successful, None otherwise
-    """
+@tool
+def scrape_url_tool(url: str) -> str:
+    """Scrapes a webpage and returns markdown text."""
     try:
         print(f"Extracting markdown from {url}")
 
@@ -191,161 +189,100 @@ def extract_markdown_from_url(url: str) -> Optional[str]:
         return None
 
 
-def extract_text_from_document(file_path: str) -> Optional[str]:
-    """
-    Extract text content from various document formats.
+class ResearchAssistant:
+    """Handles web research and content generation for the presentation."""
 
-    Args:
-        file_path: Path to the document file
+    def __init__(self, chains):
+        self.chains = chains
+        self.seen_urls = set()
+        self.research_material = ""
 
-    Returns:
-        Text content if successful, None otherwise
-    """
-    try:
-        file_extension = pathlib.Path(file_path).suffix.lower()
+    def generate_queries(self, content: str) -> str:
+        """Generates several follow-up search queries based on the input content."""
+        result = self.chains["generate_queries"].invoke({"content": content})
+        return result
 
-        if file_extension == '.txt':
-            loader = TextLoader(file_path)
-        elif file_extension in ['.md', '.markdown']:
-            loader = UnstructuredMarkdownLoader(file_path)
-        elif file_extension == '.pdf':
-            loader = PyPDFLoader(file_path)
-        elif file_extension in ['.docx', '.doc']:
-            loader = UnstructuredWordDocumentLoader(file_path)
-        else:
-            raise ValueError(f"Unsupported file format: {file_extension}")
+    def summarize(self, content: str) -> str:
+        """Summarizes the provided text content into 1-2 paragraphs."""
+        result = self.chains["summarize"].invoke({"content": content})
+        return result
 
-        docs = loader.load()
+    def research_topic(self, query: str) -> str:
+        """Conduct research on a topic and collect material."""
+        # Initial search
+        res = web_search_tool.invoke(query)
+        for r in res:
+            content = scrape_url_tool.invoke(r['link'])
+            if content:
+                self.research_material += "\n" + content
+                self.seen_urls.add(r['link'])
 
-        if not docs:
-            return None
+        # Follow-up searches based on generated queries
+        additional_queries = self.generate_queries(self.research_material)
 
-        # Combine all document pages/sections
-        return "\n\n".join([doc.page_content for doc in docs])
-    except Exception as e:
-        print(f"Error extracting text from document {file_path}: {str(e)}")
-        return None
+        for q in additional_queries.content.split("\n"):
+            if q.strip():  # Skip empty lines
+                print(q)
+                res = web_search_tool.invoke(q)
+                for r in res:
+                    if r['link'] not in self.seen_urls:
+                        content = scrape_url_tool.invoke(r['link'])
+                        if content:
+                            self.research_material += "\n" + content
+                            self.seen_urls.add(r['link'])
 
+        return self.research_material
 
-def sanitize_filename(query: str) -> str:
-    """
-    Sanitize the query to create a safe filename.
-
-    Args:
-        query: The input query string.
-
-    Returns:
-        A sanitized string safe for use as a filename.
-    """
-    # Replace spaces with underscores and remove invalid characters
-    return re.sub(r'[^a-zA-Z0-9_\-]', '', query.replace(' ', '_'))
-
-
-# Parse command-line arguments
-parser = argparse.ArgumentParser(
-    description="Langchain Agent for MARP presentations.")
-input_group = parser.add_mutually_exclusive_group(required=True)
-input_group.add_argument("-q", "--query", type=str,
-                         help="The query to search and generate a MARP presentation for.")
-input_group.add_argument("-u", "--url", type=str,
-                         help="The URL to scrape and generate a MARP presentation for.")
-input_group.add_argument("-d", "--document", type=str,
-                         help="Local document (TXT, MD, PDF, DOCX) to extract content from for the presentation.")
-parser.add_argument("-b", "--background", type=str,
-                    help="Custom background image URL for the presentation (default: https://marp.app/assets/hero-background.svg)")
-args = parser.parse_args()
-
-# Use the query, url or document from the command-line arguments
-query = args.query
-url = args.url
-document_path = args.document
-background_url = args.background if args.background else DEFAULT_BACKGROUND_URL
-
-# API Keys
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-# Azure OpenAI configuration
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
+    def create_presentation(self, background_url: str) -> str:
+        """Generate a presentation from the researched material."""
+        presentation = self.chains["marp"].invoke(
+            {"bg_url": background_url, "content": self.research_material})
+        return presentation.content
 
 
-# Initialize the LLM
-if AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT_NAME:
-    llm = AzureChatOpenAI(
-        azure_deployment=AZURE_OPENAI_DEPLOYMENT_NAME,
-        azure_endpoint=AZURE_OPENAI_ENDPOINT,
-        api_version=AZURE_OPENAI_API_VERSION,
-        # temperature=0
-    )
-elif OPENAI_API_KEY:
-    llm = ChatOpenAI(
-        model="gpt-4o",
-        temperature=0,
-        openai_api_key=OPENAI_API_KEY
-    )
-else:
-    raise ValueError(
-        "No valid OpenAI or Azure OpenAI API key configuration found.")
+def parse_arguments():
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Langchain Agent for MARP presentations.")
+    input_group = parser.add_mutually_exclusive_group(required=True)
+    input_group.add_argument("-q", "--query", type=str,
+                             help="The query to search and generate a MARP presentation for.")
+    parser.add_argument("-b", "--background", type=str,
+                        help=f"Custom background image URL for the presentation (default: {DEFAULT_BACKGROUND_URL})")
+    return parser.parse_args()
 
-# Create the agent
-memory = MemorySaver()
-model = llm
 
-# Define the tools
-search_tool = Tool(
-    name="Search",
-    description="Useful for searching the web for information.",
-    func=search_web,
-)
-extract_markdown_from_url_tool = Tool(
-    name="MarkdownExtractor",
-    description="Useful for extracting content from a webpage URL.",
-    func=extract_markdown_from_url,
-)
-extract_text_from_document_tool = Tool(
-    name="TextExtractor",
-    description="Useful for extracting text content from a local document.",
-    func=extract_text_from_document,
-)
+def main():
+    """Main entry point for the script."""
+    # Parse command-line arguments
+    args = parse_arguments()
+    query = args.query
+    background_url = args.background if args.background else DEFAULT_BACKGROUND_URL
 
-# Process based on input type
-if document_path:
-    # Process document input
-    prompt = create_document_prompt(background_url)
-    tools = [extract_text_from_document_tool]
-    input_value = document_path
+    # Initialize components
+    llm = initialize_llm()
+    chains = create_chains(llm)
 
-    # Use document name for the filename
-    doc_name = os.path.basename(document_path)
-    safe_filename = sanitize_filename(os.path.splitext(doc_name)[0])
-elif url:
-    # Process URL input
-    prompt = create_url_prompt(background_url)
-    tools = [extract_markdown_from_url_tool]
-    input_value = url
+    # Create research assistant
+    assistant = ResearchAssistant(chains)
 
-    # Use URL for the filename
-    safe_filename = sanitize_filename(url)
-else:
-    # Process search query input
-    prompt = create_search_prompt(background_url)
-    tools = [search_tool, extract_markdown_from_url_tool]
-    input_value = query
+    # Research the topic
+    print(f"Researching topic: {query}")
+    assistant.research_topic(query)
 
-    # Use query for the filename
+    # Generate presentation
+    print("Done researching material. Now creating presentation...")
+    presentation_text = assistant.create_presentation(background_url)
+    print(presentation_text)
+
+    # Save the presentation
     safe_filename = sanitize_filename(query)
+    os.makedirs("outputs", exist_ok=True)
+    with open(f"outputs/{safe_filename}.md", "w") as f:
+        f.write(presentation_text)
 
-# Create and execute the agent
-agent = create_tool_calling_agent(llm, tools, prompt)
-agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
-result = agent_executor.invoke({"input": input_value})
-result_output = result['output']
+    print(f"Presentation saved to outputs/{safe_filename}.md")
 
-# Ensure outputs directory exists
-os.makedirs("outputs", exist_ok=True)
 
-# Save result to a file in the outputs/ folder
-with open(f"outputs/{safe_filename}.md", "w") as f:
-    f.write(result_output)
+if __name__ == "__main__":
+    main()
