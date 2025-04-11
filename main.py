@@ -45,12 +45,17 @@ def create_search_prompt(bg_url):
 ## Persona:
 You are a Cloud Solution Architect that delivers top-notch presentations to your customers on technological-related topics.
 
-## Task:
-Create a MARP presentation using CommonMark based on research.
-First, research all documents that you find in search, extract texts and links out of those and fully understand the subject.
-Finally, after you have parsed ALL documents in the search results, create the presentation.
+## Tasks:
+
+1. Search the web for relevant information about the topic: {{input}}.
+2. Read and parse all the URLs retrieved from web search.
+3. Expand the researched material into more search queries that you shall web search to broaden the scope of the presentation.
+4. Do a search query for each search query
+5. Extract the content from all search results.
+6. Create a MARP presentation using CommonMark that summarizes all the extracted information.
 
 ## Rules:
+- There is no minimum or maximum number of slides: do all those that are needed
 - Only output valid Markdown MARP text, do not add anything else
 - Please be verbose in the text used in the slides
 - Include images from research material, tables, bulleted and ordered lists, links, emoticons and code samples where applicable.
@@ -70,9 +75,6 @@ backgroundColor: #fff
 backgroundImage: url('{bg_url}')
 ---
 
-## Topic
-Topic to research is: {{input}}
-
 {{agent_scratchpad}}
 """)
 
@@ -87,6 +89,7 @@ Create a MARP presentation using CommonMark based on the following url: {{input}
 First, download and extract the content from the url. Finally, elaborate the slides.
 
 ## Rules:
+- There is no minimum or maximum number of slides: do all those that are needed
 - Only output valid Markdown MARP text, do not add anything else
 - Please be verbose in the text used in the slides
 - Include images, tables, bulleted and ordered lists, links, emoticons and code samples where applicable
@@ -119,6 +122,7 @@ You are a Cloud Solution Architect that delivers top-notch presentations to your
 Create a MARP presentation using CommonMark based on the following document: {{input}}
 
 ## Rules:
+- There is no minimum or maximum number of slides: do all those that are needed
 - Only output valid Markdown MARP text, do not add anything else
 - Please be verbose in the text used in the slides
 - Include, tables, bulleted and ordered lists, links, emoticons and code samples where applicable
@@ -171,14 +175,14 @@ def extract_markdown_from_url(url: str) -> Optional[str]:
         Markdown content if successful, None otherwise
     """
     try:
+        print(f"Extracting markdown from {url}")
+
         # Load the webpage
         loader = AsyncHtmlLoader(url)
         docs = loader.load()
 
         if not docs:
             return None
-
-        print(f"Extracting markdown from {url}")
 
         doc = Document(docs[0].page_content)
         return pyhtml2md.convert(doc.summary())
@@ -297,12 +301,12 @@ search_tool = Tool(
 )
 extract_markdown_from_url_tool = Tool(
     name="MarkdownExtractor",
-    description="Useful to extract markdown content from a webpage URL.",
+    description="Useful for extracting content from a webpage URL.",
     func=extract_markdown_from_url,
 )
 extract_text_from_document_tool = Tool(
     name="TextExtractor",
-    description="Useful to extract text content from a local document.",
+    description="Useful for extracting text content from a local document.",
     func=extract_text_from_document,
 )
 
