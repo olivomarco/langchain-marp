@@ -488,8 +488,6 @@ class ResearchAssistant:
         additional_queries = self.generate_queries(self.research_material)
 
         for q in additional_queries.content.split("\n"):
-            # TODO remove this line
-            break
             if q.strip():  # Skip empty lines
                 print(Fore.YELLOW + q)
                 res = web_search_tool.invoke(q)
