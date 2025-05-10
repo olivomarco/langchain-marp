@@ -159,49 +159,7 @@ def create_prompts():
     - Do NOT include ```markdown or ``` at the beginning or end of the slide, just the content (in Markdown format as described)
     """)
 
-    marp_prompt = PromptTemplate(input_variables=["bg_url", "content", "tone", "date"], template="""
-    ## Persona:
-    You are a Cloud Solution Architect that delivers top-notch presentations to your customers on technological-related topics.
-
-    ## Tasks:
-    Create a MARP presentation using CommonMark that summarizes all the researched content.
-    Researched content is:
-    ---
-    {content}
-    ---
-
-    ## Rules:
-    - There is no minimum or maximum number of slides: do all those that are needed to fully explain the topic
-    - Only output valid Markdown MARP text, do not add anything else
-    - Please be verbose in the text used in the slides
-    - Include images from research material, tables, bulleted and ordered lists, links, emoticons and code samples where applicable.
-    - Be creative with the graphics, stick with the content that is provided and remember that you can include images and icons full-page if this helps the creative flow.
-    - Content of the presentation shall be very effective and engaging
-    - Content shall follow a logical flow typical of the world-class presentations
-    - Image URLs shall be taken directly from the researched content, do not make them up
-    - In presentation first slide, always add a cool title (h1 header) and a subtitle (h2 header) related to the topic
-    - In presentation first slide, always prepend the speaker name with "> Presented by:" (to quote it)
-    - Do not add any dates for the presentation
-    - In the slides, for titles use h2-level headings
-    
-    ## Tone:
-    {tone}
-
-    Today's date is {date}.
-
-    MARP file must start with the following header, unchanged:
-
-    ---
-    marp: true
-    theme: default
-    paginate: false
-    _class: lead
-    backgroundColor: #fff
-    backgroundImage: url('{bg_url}')
-    ---
-    """)
-
-    return generate_queries_prompt, summarize_prompt, presentation_agenda_prompt, slide_content_prompt, marp_prompt
+    return generate_queries_prompt, summarize_prompt, presentation_agenda_prompt, slide_content_prompt
 
 
 def initialize_llms():
@@ -252,14 +210,13 @@ def initialize_llms():
 
 def create_chains(simple_llm, complex_llm):
     """Create and return all LLM chains used by the application."""
-    generate_queries_prompt, summarize_prompt, presentation_agenda_prompt, slide_content_prompt, marp_prompt = create_prompts()
+    generate_queries_prompt, summarize_prompt, presentation_agenda_prompt, slide_content_prompt = create_prompts()
 
     return {
         "generate_queries": generate_queries_prompt | simple_llm,
         "summarize": summarize_prompt | simple_llm,
         "presentation_agenda": presentation_agenda_prompt | simple_llm,
         "slide_content": slide_content_prompt | complex_llm,
-        "marp": marp_prompt | complex_llm
     }
 
 
